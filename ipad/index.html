@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editor PDF · Capas</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon">▤</span><div><strong>Editor PDF</strong><small>Resaltado por capas</small></div></div>
+      <div class="file-actions">
+        <button id="openPdf" class="primary">Abrir PDFs</button>
+        <button id="openProject" title="Cargar marcas guardadas para el PDF activo">Abrir proyecto</button>
+        <button id="saveProject" title="Guardar capas y marcas del PDF activo">Guardar proyecto</button>
+        <button id="exportPdf" class="export" title="Elegir dónde guardar el PDF activo">Guardar PDF como…</button>
+        <button id="exportAll" title="Elegir dónde guardar un ZIP con todos los PDF">Guardar todos como…</button>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside class="tools" aria-label="Herramientas">
+        <button id="toolHand" class="tool active" title="Mano (H o barra espaciadora)"><span>✋</span><small>Mano</small></button>
+        <button id="toolHighlight" class="tool" title="Resaltar (R)"><span>▰</span><small>Marcar</small></button>
+        <button id="toolInk" class="tool" title="Dibujar con trazo suave (D)"><span>✎</span><small>Dibujar</small></button>
+        <div id="inkOptions" class="ink-options" hidden><label for="inkColor">Color</label><input id="inkColor" type="color" value="#d44332" title="Color del lápiz para las próximas notas"><label for="inkWidth">Grosor <span id="inkWidthLabel">3</span></label><input id="inkWidth" type="range" min="1" max="12" step="0.5" value="3"></div>
+        <button id="toolCallout" class="tool" title="Texto de revisión con flecha (T)"><span>↗</span><small>Texto</small></button>
+        <button id="toolSelect" class="tool" title="Seleccionar marca (V)"><span>↖</span><small>Elegir</small></button>
+        <button id="toolErase" class="tool" title="Borrar una marca con un clic (E)"><span>⌫</span><small>Borrar</small></button>
+        <div class="tool-separator"></div>
+        <button id="undo" class="tool compact" title="Deshacer (Ctrl+Z)">↶</button>
+        <button id="redo" class="tool compact" title="Rehacer (Ctrl+Y)">↷</button>
+      </aside>
+      <main class="main">
+        <div class="tabbar"><div id="tabs" class="tabs"></div><button id="pdfListButton" class="small-icon" title="Lista de PDF abiertos" aria-expanded="false">☰</button><button id="closeCurrent" class="small-icon" title="Cerrar PDF activo (Ctrl+W)">×</button><button id="splitToggle" title="Mostrar dos PDF lado a lado">Vista dividida</button>
+          <div id="pdfListMenu" class="pdf-list-menu" hidden><div class="pdf-list-head"><strong>PDF abiertos</strong><span id="pdfListCount">0</span></div><label class="pdf-sort-label" for="pdfSort">Ordenar por</label><select id="pdfSort"><option value="name">Nombre A–Z</option><option value="modified">Fecha del archivo</option><option value="opened">Fecha de apertura</option></select><div id="pdfListItems" class="pdf-list-items"></div></div>
+        </div>
+        <div id="viewerRow" class="viewer-row">
+          <section id="paneA" class="viewer-pane active-pane">
+            <div class="pane-bar"><span class="pane-title" id="paneNameA">Ningún documento abierto</span><div class="pane-controls"><button id="prevA" title="Página anterior">‹</button><span id="pageInfoA">0 / 0</span><button id="nextA" title="Página siguiente">›</button><button id="zoomOutA" title="Alejar">−</button><span id="zoomLabelA">100%</span><button id="zoomInA" title="Acercar">+</button><button id="fitA" title="Ajustar página">Ajustar</button></div></div>
+            <div id="viewportA" class="viewport hand"><div id="emptyA" class="empty"><div class="empty-illustration">▤</div><h1>Tus PDF, organizados por capas</h1><p>Abre varios PDF, cambia entre pestañas o usa la vista dividida para leer y marcar dos a la vez.</p><button id="emptyOpen" class="primary">Seleccionar PDFs</button></div><div id="pageStageA" class="page-stage" hidden><img id="pageImageA" alt="Página del PDF" draggable="false"><svg id="overlayA" aria-label="Marcas del PDF"></svg></div></div>
+          </section>
+          <section id="paneB" class="viewer-pane" hidden>
+            <div class="pane-bar"><span class="pane-title" id="paneNameB">Selecciona otro PDF</span><div class="pane-controls"><button id="prevB" title="Página anterior">‹</button><span id="pageInfoB">0 / 0</span><button id="nextB" title="Página siguiente">›</button><button id="zoomOutB" title="Alejar">−</button><span id="zoomLabelB">100%</span><button id="zoomInB" title="Acercar">+</button><button id="fitB" title="Ajustar página">Ajustar</button></div></div>
+            <div id="viewportB" class="viewport hand"><div id="emptyB" class="empty split-empty"><h2>Segundo panel</h2><p>Abre otro PDF y elígelo en las pestañas para verlo aquí.</p></div><div id="pageStageB" class="page-stage" hidden><img id="pageImageB" alt="Página del segundo PDF" draggable="false"><svg id="overlayB" aria-label="Marcas del segundo PDF"></svg></div></div>
+          </section>
+        </div>
+        <div class="statusbar"><span id="status">Listo para abrir PDFs</span><span>Rueda: zoom · Mano: mover · Ctrl+Z: deshacer · Ctrl+W: cerrar PDF</span></div>
+      </main>
+      <aside class="sidebar">
+        <div class="side-header"><div><small>CAPAS DEL PDF ACTIVO</small><h2>Capas</h2><div id="sideDocName" class="side-doc-name">Ningún PDF seleccionado</div></div><button id="addLayer" class="add" title="Nueva capa para este PDF">+</button></div>
+        <p class="side-help">Haz clic en un PDF para ver sus capas. Las capas y marcas de los otros PDF se conservan por separado.</p>
+        <div id="layers" class="layers"></div>
+        <div class="side-footer"><span id="markCount">0 marcas</span><div class="mark-actions"><button id="deleteMark" title="Eliminar la marca seleccionada">Borrar seleccionada</button><button id="clearMarks" title="Borrar todas las marcas del PDF activo">Borrar todas</button></div></div>
+      </aside>
+    </div>
+  </div>
+  <input id="pdfInput" type="file" accept="application/pdf,.pdf" multiple hidden>
+  <input id="projectInput" type="file" accept="application/json,.json" hidden>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

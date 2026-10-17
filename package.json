@@ -1,0 +1,18 @@
+{
+  "name": "editor-pdf-capas",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build --config ipad/vite.config.js",
+    "preview": "vite preview --config ipad/vite.config.js"
+  },
+  "dependencies": {
+    "jszip": "3.10.1",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "4.10.38"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  }
+}
