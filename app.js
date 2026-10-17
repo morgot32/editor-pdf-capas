@@ -941,12 +941,16 @@ $("inkWidth").oninput = (event) => {
   const doc = currentDoc(); if (!doc) return;
   doc.inkWidth = Number(event.target.value); $("inkWidthLabel").textContent = String(doc.inkWidth); persist(doc);
 };
-$("inkColor").onchange = (event) => {
+function updateInkColor(event) {
   const doc = currentDoc(); if (!doc) return;
-  doc.inkColor = validInkColor(event.target.value);
+  const color = validInkColor(event.target.value);
+  if (doc.inkColor === color) return;
+  doc.inkColor = color;
   persist(doc);
   status(`Lápiz ${doc.inkColor} para las próximas notas de ${doc.name}`);
-};
+}
+$("inkColor").addEventListener("input", updateInkColor);
+$("inkColor").addEventListener("change", updateInkColor);
 $("deleteMark").onclick = () => { const doc = currentDoc(); if (doc?.selectedMarkId) eraseMark(doc, doc.selectedMarkId); };
 $("clearMarks").onclick = () => {
   const doc = currentDoc(); if (!doc?.marks.length) return;
