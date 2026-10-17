@@ -195,14 +195,15 @@ async function openFiles(files) {
   const selected = Array.from(files || []); if (!selected.length) return;
   try { await ensureBackend(); }
   catch (error) { status(error.message); alert(error.message); return; }
-  let opened = 0;
+  let opened = 0, lastOpened = null;
   for (const file of selected) {
     try {
       status(`Abriendo ${file.name}…`);
       const buffer = await file.arrayBuffer();
       const hash = await sha256(buffer);
       let info;
-      if (staticMode) info = await (await browserBackend()).openDocument(file, buffer, hash);
+      if (staticMode) info = await (await browserBackend()).openDocument(file, buffer, hash,
+        (page, total) => status(`Leyendo ${file.name}: hoja ${page} de ${total}…`));
       else {
         const response = await fetch("/api/open", { method: "POST", headers: {
           "Content-Type": "application/pdf", "X-File-Name": encodeURIComponent(file.name),
@@ -212,7 +213,7 @@ async function openFiles(files) {
       }
       if (!info.id || !Array.isArray(info.pages)) throw new Error("Respuesta incompatible del servidor. Vuelve a iniciar el editor con ABRIR_EDITOR.cmd.");
       const doc = newDoc(info, hash);
-      app.docs.set(doc.id, doc); app.order.push(doc.id); persist(doc); opened++;
+      app.docs.set(doc.id, doc); app.order.push(doc.id); persist(doc); opened++; lastOpened = doc;
       if (!panes[0].docId) panes[0].docId = doc.id;
       else if (!panes[1].docId) { panes[1].docId = doc.id; app.split = true; app.activePane = 1; }
       else panes[app.activePane].docId = doc.id;
@@ -220,7 +221,8 @@ async function openFiles(files) {
     } catch (error) { status(`Error en ${file.name}: ${error.message}`); }
   }
   if (opened) { requestAnimationFrame(() => panes.forEach((pane, index) => { if (index === 0 || app.split) fitPane(index); }));
-    status(`${opened} PDF${opened === 1 ? "" : "s"} abierto${opened === 1 ? "" : "s"} · ${app.order.length} en la sesión`); }
+    status(`${opened} PDF${opened === 1 ? "" : "s"} abierto${opened === 1 ? "" : "s"} · ${app.order.length} en la sesión` +
+      (opened === 1 ? ` · ${lastOpened.pages.length} hoja${lastOpened.pages.length === 1 ? "" : "s"}` : "")); }
 }
 async function restoreSession() {
   try {
@@ -261,7 +263,10 @@ function renderPane(index) {
   pane.name.textContent = doc?.name || (index === 0 ? "Ningún documento abierto" : "Selecciona otro PDF");
   pane.name.title = doc?.name || "";
   pane.empty.hidden = !!doc; pane.stage.hidden = !doc;
-  pane.pageInfo.textContent = doc ? `${doc.page + 1} / ${doc.pages.length}` : "0 / 0";
+  pane.pageInfo.disabled = !doc;
+  pane.pageInfo.value = doc ? String(doc.page + 1) : "";
+  pane.pageInfo.max = String(doc?.pages.length || 1);
+  $("pageTotal" + pane.suffix).textContent = `de ${doc?.pages.length || 0}`;
   pane.zoomLabel.textContent = doc ? `${Math.round(doc.zoom * 100)}%` : "100%";
   $("prev" + pane.suffix).disabled = !doc || doc.page <= 0;
   $("next" + pane.suffix).disabled = !doc || doc.page >= doc.pages.length - 1;
@@ -405,6 +410,7 @@ function changePage(index, step) {
   const doc = docFor(index); if (!doc) return;
   const next = clamp(doc.page + step, 0, doc.pages.length - 1); if (next === doc.page) return;
   doc.page = next; doc.selectedMarkId = null; persist(doc); renderAll();
+  status(`Hoja ${next + 1} de ${doc.pages.length} · ${doc.name}`);
 }
 
 function svg(tag) { return document.createElementNS(SVG, tag); }
@@ -707,7 +713,13 @@ function pointerUp(event, index) {
   if (!interaction || interaction.pointerId !== event.pointerId) return;
   pane.interaction = null; pane.viewport.classList.remove("dragging");
   if (pane.viewport.hasPointerCapture(event.pointerId)) pane.viewport.releasePointerCapture(event.pointerId);
-  if (interaction.kind === "pan") return;
+  if (interaction.kind === "pan") {
+    const dx = event.clientX - interaction.x, dy = event.clientY - interaction.y;
+    if (event.pointerType === "touch" && pane.viewport.scrollWidth <= pane.viewport.clientWidth + 4 &&
+        Math.abs(dx) >= 75 && Math.abs(dx) > Math.abs(dy) * 1.4)
+      changePage(index, dx < 0 ? 1 : -1);
+    return;
+  }
   if (interaction.kind === "tap") {
     const doc = app.docs.get(interaction.docId);
     if (doc && Math.hypot(event.clientX - interaction.x, event.clientY - interaction.y) < 14) {
@@ -962,6 +974,14 @@ panes.forEach((pane, index) => {
   pane.root.addEventListener("pointerdown", () => activatePane(index));
   $("prev" + pane.suffix).onclick = () => changePage(index, -1);
   $("next" + pane.suffix).onclick = () => changePage(index, 1);
+  pane.pageInfo.onchange = () => {
+    const doc = docFor(index); if (!doc) return;
+    const selected = Number(pane.pageInfo.value);
+    if (Number.isInteger(selected) && selected >= 1 && selected <= doc.pages.length)
+      changePage(index, selected - doc.page - 1);
+    pane.pageInfo.value = String(doc.page + 1);
+  };
+  pane.pageInfo.onkeydown = (event) => { if (event.key === "Enter") pane.pageInfo.blur(); };
   $("zoomOut" + pane.suffix).onclick = () => { const doc = docFor(index); if (doc) setZoom(index, doc.zoom / 1.2); };
   $("zoomIn" + pane.suffix).onclick = () => { const doc = docFor(index); if (doc) setZoom(index, doc.zoom * 1.2); };
   $("fit" + pane.suffix).onclick = () => fitPane(index);

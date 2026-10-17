@@ -61,19 +61,21 @@ export async function listDocuments() {
     .sort((a, b) => a.openedAt - b.openedAt);
 }
 
-export async function openDocument(file, buffer, hash) {
+export async function openDocument(file, buffer, hash, onProgress = () => {}) {
   await loadSaved();
   if (!file.name.toLowerCase().endsWith(".pdf")) throw new Error("Selecciona un archivo PDF.");
   if (file.size > MAX_FILE_BYTES) throw new Error("En iPad el límite por PDF es de 80 MB.");
   if (records.size >= MAX_DOCUMENTS) throw new Error("Cierra un PDF antes de abrir más de 20.");
   const record = { blob: file, pdf: null };
   const pdf = await loadProxy(record, buffer);
+  if (!pdf.numPages) throw new Error("El PDF no contiene hojas.");
   const pages = [];
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
     const page = await pdf.getPage(pageNo);
     const viewport = page.getViewport({ scale: 1 });
     pages.push({ width: Math.round(viewport.width * 1000) / 1000,
       height: Math.round(viewport.height * 1000) / 1000 });
+    onProgress(pageNo, pdf.numPages);
     page.cleanup();
   }
   const info = { id: crypto.randomUUID(), name: file.name.slice(0, 180), pages,

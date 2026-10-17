@@ -6,7 +6,7 @@ Abre [editor-pdf-capas en GitHub Pages](https://morgot32.github.io/editor-pdf-ca
 
 En iPad, **Guardar PDF como…** y **Guardar todos como…** ofrecen el menú Compartir de iOS cuando está disponible. Desde allí puedes elegir **Guardar en Archivos** y seleccionar la ubicación. Si el navegador no ofrece Compartir, se descarga el archivo. Los PDF se procesan en el dispositivo; el sitio no envía los documentos a un servidor. Esta versión admite hasta 20 PDF de 80 MB cada uno; no abre PDF protegidos con contraseña.
 
-Usa **Mano** para arrastrar con un dedo. Pellizca con dos dedos para ampliar o reducir y desliza ambos dedos para mover la página; los gestos funcionan también mientras está seleccionada una herramienta de marcado. Al acercar, la zona visible se vuelve a dibujar en alta resolución. Para marcar o dibujar con el dedo, selecciona primero la herramienta correspondiente.
+Usa **Mano** para arrastrar con un dedo. Cuando la hoja cabe en el ancho del panel, desliza horizontalmente con un dedo para pasar a la hoja anterior o siguiente. Pellizca con dos dedos para ampliar o reducir y desliza ambos dedos para mover la página; los gestos funcionan también mientras está seleccionada una herramienta de marcado. Al acercar, la zona visible se vuelve a dibujar en alta resolución. Para marcar o dibujar con el dedo, selecciona primero la herramienta correspondiente. El control **Hoja _n_ de _total_** permite escribir el número de hoja para ir directamente a ella.
 
 ## Publicar actualizaciones en GitHub Pages
 
@@ -29,6 +29,7 @@ Aplicación local para abrir varios PDF, resaltar zonas, dibujar trazos suaves y
 - **Abrir PDFs** permite seleccionar varios archivos a la vez. Cada uno aparece en una pestaña. **Vista dividida** muestra dos PDF lado a lado; haz clic en un panel para activar sus capas y herramientas.
 - El botón pequeño **☰** muestra todos los PDF abiertos. Puedes ordenarlos por nombre, fecha de modificación del archivo o fecha de apertura. La **×** contigua cierra el PDF activo.
 - **Mano** arrastra la página. La rueda del ratón acerca o aleja centrando el zoom en el puntero. **Ajustar** encaja la página del panel correspondiente.
+- En un PDF de varias hojas, usa **‹ / ›** para cambiar de hoja o escribe el número en **Hoja _n_ de _total_**. Las marcas quedan asociadas a su hoja al guardar o exportar.
 - **Marcar** dibuja un rectángulo resaltado en la capa seleccionada. Cambia su color, opacidad, nombre o visibilidad en el panel derecho.
 - **Dibujar** permite hacer trazos libres suavizados, con extremos redondos. Elige el **color del lápiz** y el grosor junto al botón antes de dibujar. Cada color se guarda en una capa **Dibujo** propia del PDF, por lo que cambiar el color no modifica las notas anteriores. Puedes ajustar la opacidad o renombrar cada capa; **+** crea otra capa de dibujo cuando esta herramienta está activa. El color elegido se recuerda por PDF y en el proyecto guardado.
 - **Texto**: arrastra desde el punto que quieres señalar hasta donde irá el cuadro de texto y escribe el comentario. Haz doble clic en un comentario para editarlo. La flecha y el texto pertenecen a la capa activa.
