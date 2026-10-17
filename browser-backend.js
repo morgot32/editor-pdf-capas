@@ -92,24 +92,31 @@ export async function closeDocument(id) {
   try { await stored("delete", id); } catch (error) { console.warn("No se pudo borrar la copia local:", error); }
 }
 
-export async function renderPage(id, pageIndex) {
+export async function renderPage(id, pageIndex, region = null) {
   await loadSaved();
   const record = records.get(id);
   if (!record) throw new Error("PDF no encontrado en este dispositivo.");
   const pdf = await loadProxy(record);
   const page = await pdf.getPage(pageIndex + 1);
   const basic = page.getViewport({ scale: 1 });
-  const scale = Math.min(2, 4096 / Math.max(basic.width, basic.height));
-  const viewport = page.getViewport({ scale });
+  const scale = region?.scale || Math.min(2, 4096 / Math.max(basic.width, basic.height));
+  const x = region?.x || 0, y = region?.y || 0;
+  const width = region?.width || basic.width, height = region?.height || basic.height;
+  if (region && (!Number.isFinite(scale) || !Number.isFinite(x) || !Number.isFinite(y) ||
+      !Number.isFinite(width) || !Number.isFinite(height) || scale <= 0 || width <= 0 || height <= 0 ||
+      x < 0 || y < 0 || x + width > basic.width + 0.01 || y + height > basic.height + 0.01 ||
+      width * scale > 4096 || height * scale > 4096 || width * height * scale * scale > 12_000_000))
+    throw new Error("La zona HD solicitada es demasiado grande.");
+  const viewport = page.getViewport({ scale, offsetX: -x * scale, offsetY: -y * scale });
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.floor(viewport.width));
-  canvas.height = Math.max(1, Math.floor(viewport.height));
+  canvas.width = Math.max(1, Math.ceil(width * scale));
+  canvas.height = Math.max(1, Math.ceil(height * scale));
   const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("El navegador no pudo crear el lienzo HD.");
   await page.render({ canvasContext: context, viewport }).promise;
   const blob = await new Promise((resolve, reject) =>
     canvas.toBlob((value) => value ? resolve(value) : reject(new Error("No se pudo dibujar la página.")), "image/png"));
   canvas.width = canvas.height = 0;
-  page.cleanup();
   return blob;
 }
 

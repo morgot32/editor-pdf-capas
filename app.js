@@ -7,8 +7,18 @@ const panes = ["A", "B"].map((suffix) => ({
   suffix, root: $("pane" + suffix), viewport: $("viewport" + suffix), stage: $("pageStage" + suffix),
   image: $("pageImage" + suffix), overlay: $("overlay" + suffix), empty: $("empty" + suffix),
   name: $("paneName" + suffix), pageInfo: $("pageInfo" + suffix), zoomLabel: $("zoomLabel" + suffix),
-  docId: null, loadedKey: null, imageUrl: null, renderToken: 0, interaction: null
+  docId: null, loadedKey: null, imageUrl: null, renderToken: 0, interaction: null,
+  detailImage: null, detailUrl: null, detailTimer: null, detailToken: 0, detailRegion: null,
+  touchPoints: new Map(), pinch: null, ignoreTouchUntilClear: false
 }));
+panes.forEach((pane) => {
+  pane.detailImage = document.createElement("img");
+  pane.detailImage.className = "detail-image";
+  pane.detailImage.alt = "";
+  pane.detailImage.draggable = false;
+  pane.detailImage.hidden = true;
+  pane.image.after(pane.detailImage);
+});
 const app = { docs: new Map(), order: [], activePane: 0, split: false, tool: "hand", temporaryHand: false,
   pdfSort: "name", listOpen: false };
 const staticMode = Boolean(window.EDITOR_PDF_STATIC);
@@ -262,8 +272,19 @@ function renderPane(index) {
   updateStageSize(index); renderMarks(index);
   const key = `${doc.id}:${doc.page}`;
   if (pane.loadedKey !== key) loadPage(index);
+  else scheduleDetail(index);
+}
+function clearPaneDetail(pane) {
+  clearTimeout(pane.detailTimer);
+  pane.detailToken++;
+  pane.detailRegion = null;
+  pane.detailImage.hidden = true;
+  pane.detailImage.removeAttribute("src");
+  if (pane.detailUrl) URL.revokeObjectURL(pane.detailUrl);
+  pane.detailUrl = null;
 }
 function clearPaneImage(pane) {
+  clearPaneDetail(pane);
   pane.image.removeAttribute("src");
   if (pane.imageUrl) URL.revokeObjectURL(pane.imageUrl);
   pane.imageUrl = null;
@@ -286,7 +307,68 @@ async function loadPage(index) {
     pane.imageUrl = url;
     pane.image.src = url;
     pane.viewport.scrollTop = 0; pane.viewport.scrollLeft = 0;
+    scheduleDetail(index);
   } catch (error) { pane.loadedKey = null; status(`Error al mostrar ${doc.name}: ${error.message}`); }
+}
+function scheduleDetail(index) {
+  const pane = panes[index];
+  clearTimeout(pane.detailTimer);
+  pane.detailTimer = setTimeout(() => renderDetail(index), 140);
+}
+async function renderDetail(index) {
+  const pane = panes[index], doc = docFor(index);
+  if (!doc || pane.root.hidden || pane.stage.hidden) return;
+  const size = doc.pages[doc.page];
+  const baseScale = Math.min(2, (staticMode ? 4096 : 5000) / Math.max(size.width, size.height));
+  const requestedScale = doc.zoom * Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
+  if (requestedScale <= baseScale * 1.1) { clearPaneDetail(pane); return; }
+  const stage = pane.stage.getBoundingClientRect(), viewport = pane.viewport.getBoundingClientRect();
+  const x0 = clamp((viewport.left - stage.left) / doc.zoom, 0, size.width);
+  const y0 = clamp((viewport.top - stage.top) / doc.zoom, 0, size.height);
+  const x1 = clamp((viewport.right - stage.left) / doc.zoom, 0, size.width);
+  const y1 = clamp((viewport.bottom - stage.top) / doc.zoom, 0, size.height);
+  if (x1 <= x0 || y1 <= y0) return;
+  const previous = pane.detailRegion;
+  if (previous && previous.docId === doc.id && previous.page === doc.page &&
+      Math.abs(previous.requestedScale - requestedScale) < 0.01 &&
+      previous.x <= x0 + 3 && previous.y <= y0 + 3 &&
+      previous.x + previous.width >= x1 - 3 && previous.y + previous.height >= y1 - 3) return;
+  const padding = 120 / doc.zoom;
+  const x = Math.max(0, Math.floor(x0 - padding)), y = Math.max(0, Math.floor(y0 - padding));
+  const right = Math.min(size.width, Math.ceil(x1 + padding));
+  const bottom = Math.min(size.height, Math.ceil(y1 + padding));
+  const width = right - x, height = bottom - y;
+  const scale = Math.min(requestedScale, 4096 / width, 4096 / height,
+    Math.sqrt(12_000_000 / (width * height)));
+  if (scale <= baseScale * 1.05) { clearPaneDetail(pane); return; }
+  const token = ++pane.detailToken, key = `${doc.id}:${doc.page}`;
+  try {
+    let blob;
+    if (staticMode) blob = await (await browserBackend()).renderPage(doc.id, doc.page,
+      { x, y, width, height, scale });
+    else {
+      const query = new URLSearchParams({ id: doc.id, page: String(doc.page),
+        x: String(x), y: String(y), width: String(width), height: String(height), scale: String(scale) });
+      const response = await fetch(`/api/page?${query}`);
+      if (!response.ok) throw new Error(await responseError(response));
+      blob = await response.blob();
+    }
+    if (token !== pane.detailToken || pane.docId !== doc.id || pane.loadedKey !== key ||
+        Math.abs(doc.zoom - requestedScale / Math.min(2.5, Math.max(1, window.devicePixelRatio || 1))) > 0.01) return;
+    const url = URL.createObjectURL(blob);
+    const oldUrl = pane.detailUrl;
+    pane.detailUrl = url;
+    pane.detailImage.style.left = `${x * doc.zoom}px`;
+    pane.detailImage.style.top = `${y * doc.zoom}px`;
+    pane.detailImage.style.width = `${width * doc.zoom}px`;
+    pane.detailImage.style.height = `${height * doc.zoom}px`;
+    pane.detailImage.src = url;
+    pane.detailImage.hidden = false;
+    pane.detailRegion = { docId: doc.id, page: doc.page, x, y, width, height, scale, requestedScale };
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+  } catch (error) {
+    if (token === pane.detailToken) status(`No se pudo mejorar la imagen HD: ${error.message}`);
+  }
 }
 function updateStageSize(index) {
   const pane = panes[index], doc = docFor(index); if (!doc) return;
@@ -296,7 +378,7 @@ function updateStageSize(index) {
   pane.overlay.setAttribute("viewBox", `0 0 ${size.width} ${size.height}`);
   pane.zoomLabel.textContent = `${Math.round(doc.zoom * 100)}%`;
 }
-function setZoom(index, value, clientX, clientY) {
+function setZoom(index, value, clientX, clientY, save = true) {
   const pane = panes[index], doc = docFor(index); if (!doc) return;
   const next = clamp(value, 0.25, 5); if (Math.abs(next - doc.zoom) < 0.001) return;
   const before = pane.stage.getBoundingClientRect();
@@ -304,18 +386,20 @@ function setZoom(index, value, clientX, clientY) {
   const x = clientX ?? viewport.left + pane.viewport.clientWidth / 2;
   const y = clientY ?? viewport.top + pane.viewport.clientHeight / 2;
   const docX = (x - before.left) / doc.zoom, docY = (y - before.top) / doc.zoom;
-  doc.zoom = next; updateStageSize(index);
+  doc.zoom = next; clearPaneDetail(pane); updateStageSize(index);
   const after = pane.stage.getBoundingClientRect();
   pane.viewport.scrollLeft += after.left + docX * next - x;
   pane.viewport.scrollTop += after.top + docY * next - y;
-  persist(doc);
+  if (save) persist(doc);
+  scheduleDetail(index);
 }
 function fitPane(index) {
   const pane = panes[index], doc = docFor(index); if (!doc || pane.root.hidden) return;
   const size = doc.pages[doc.page];
   doc.zoom = clamp(Math.min(Math.max(100, pane.viewport.clientWidth - 44) / size.width,
                             Math.max(100, pane.viewport.clientHeight - 44) / size.height), 0.25, 5);
-  updateStageSize(index); pane.viewport.scrollTop = 0; pane.viewport.scrollLeft = 0; persist(doc);
+  clearPaneDetail(pane); updateStageSize(index);
+  pane.viewport.scrollTop = 0; pane.viewport.scrollLeft = 0; persist(doc); scheduleDetail(index);
 }
 function changePage(index, step) {
   const doc = docFor(index); if (!doc) return;
@@ -517,20 +601,44 @@ function wrapText(text, max = 28) {
   }
   return lines;
 }
+function touchPair(pane) {
+  const [a, b] = Array.from(pane.touchPoints.values()).slice(0, 2);
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+    distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
+}
 function pointerDown(event, index) {
   activatePane(index);
   const pane = panes[index], doc = docFor(index);
-  if (!doc || event.button !== 0) return;
+  if (!doc || (event.pointerType !== "touch" && event.button !== 0)) return;
+  if (event.pointerType === "touch") {
+    pane.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    pane.viewport.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    if (pane.touchPoints.size >= 2) {
+      pane.interaction = null;
+      pane.viewport.classList.remove("dragging");
+      pane.pinch = touchPair(pane);
+      pane.ignoreTouchUntilClear = true;
+      renderMarks(index);
+      return;
+    }
+    if (pane.ignoreTouchUntilClear) return;
+  }
   const tool = effectiveTool();
   if (tool === "hand") {
     pane.interaction = { kind: "pan", x: event.clientX, y: event.clientY,
-      left: pane.viewport.scrollLeft, top: pane.viewport.scrollTop };
+      left: pane.viewport.scrollLeft, top: pane.viewport.scrollTop, pointerId: event.pointerId };
     pane.viewport.classList.add("dragging"); pane.viewport.setPointerCapture(event.pointerId); event.preventDefault();
   } else if ((tool === "highlight" || tool === "callout" || tool === "ink") && insidePage(event, index)) {
     const start = pointOnPage(event, index);
     pane.interaction = { kind: tool, start, end: start, points: [[start.x, start.y]],
-      width: doc.inkWidth, color: doc.inkColor, docId: doc.id, page: doc.page };
+      width: doc.inkWidth, color: doc.inkColor, docId: doc.id, page: doc.page,
+      pointerId: event.pointerId };
     pane.viewport.setPointerCapture(event.pointerId); event.preventDefault();
+  } else if (event.pointerType === "touch" && (tool === "select" || tool === "erase")) {
+    pane.interaction = { kind: "tap", tool, pointerId: event.pointerId, docId: doc.id,
+      markId: event.target.closest?.("[data-mark-id]")?.dataset.markId || null,
+      x: event.clientX, y: event.clientY };
   } else if (tool === "select") {
     doc.selectedMarkId = event.target.closest?.("[data-mark-id]")?.dataset.markId || null;
     renderMarks(index); renderButtons();
@@ -540,8 +648,23 @@ function pointerDown(event, index) {
   }
 }
 function pointerMove(event, index) {
-  const pane = panes[index], interaction = pane.interaction;
-  if (!interaction) return;
+  const pane = panes[index];
+  if (event.pointerType === "touch" && pane.touchPoints.has(event.pointerId)) {
+    pane.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pane.pinch && pane.touchPoints.size >= 2) {
+      const next = touchPair(pane), previous = pane.pinch, doc = docFor(index);
+      pane.viewport.scrollLeft -= next.x - previous.x;
+      pane.viewport.scrollTop -= next.y - previous.y;
+      if (doc) setZoom(index, doc.zoom * next.distance / previous.distance, next.x, next.y, false);
+      pane.pinch = next;
+      event.preventDefault();
+      return;
+    }
+    if (pane.ignoreTouchUntilClear) return;
+  }
+  const interaction = pane.interaction;
+  if (!interaction || interaction.pointerId !== event.pointerId) return;
+  if (interaction.kind === "tap") return;
   if (interaction.kind === "pan") {
     pane.viewport.scrollLeft = interaction.left - (event.clientX - interaction.x);
     pane.viewport.scrollTop = interaction.top - (event.clientY - interaction.y);
@@ -569,11 +692,33 @@ function pointerMove(event, index) {
   }
 }
 function pointerUp(event, index) {
-  const pane = panes[index], interaction = pane.interaction;
-  if (!interaction) return;
+  const pane = panes[index];
+  if (event.pointerType === "touch") {
+    pane.touchPoints.delete(event.pointerId);
+    if (pane.pinch || pane.ignoreTouchUntilClear) {
+      if (pane.touchPoints.size < 2) pane.pinch = null;
+      pane.ignoreTouchUntilClear = pane.touchPoints.size > 0;
+      if (!pane.pinch && !pane.ignoreTouchUntilClear && docFor(index)) persist(docFor(index));
+      if (pane.viewport.hasPointerCapture(event.pointerId)) pane.viewport.releasePointerCapture(event.pointerId);
+      return;
+    }
+  }
+  const interaction = pane.interaction;
+  if (!interaction || interaction.pointerId !== event.pointerId) return;
   pane.interaction = null; pane.viewport.classList.remove("dragging");
   if (pane.viewport.hasPointerCapture(event.pointerId)) pane.viewport.releasePointerCapture(event.pointerId);
   if (interaction.kind === "pan") return;
+  if (interaction.kind === "tap") {
+    const doc = app.docs.get(interaction.docId);
+    if (doc && Math.hypot(event.clientX - interaction.x, event.clientY - interaction.y) < 14) {
+      if (interaction.tool === "erase" && interaction.markId) eraseMark(doc, interaction.markId);
+      else if (interaction.tool === "select") {
+        doc.selectedMarkId = interaction.markId;
+        renderMarks(index); renderButtons();
+      }
+    }
+    return;
+  }
   const doc = app.docs.get(interaction.docId);
   if (!doc || docFor(index)?.id !== doc.id || doc.page !== interaction.page) { renderMarks(index); return; }
   const end = pointOnPage(event, index);
@@ -822,6 +967,7 @@ panes.forEach((pane, index) => {
   pane.viewport.addEventListener("pointerdown", (event) => pointerDown(event, index));
   pane.viewport.addEventListener("pointermove", (event) => pointerMove(event, index));
   pane.viewport.addEventListener("pointerup", (event) => pointerUp(event, index));
+  pane.viewport.addEventListener("scroll", () => scheduleDetail(index), { passive: true });
   pane.viewport.addEventListener("dblclick", (event) => {
     const doc = docFor(index);
     const id = event.target.closest?.("[data-mark-id]")?.dataset.markId;
@@ -838,9 +984,19 @@ panes.forEach((pane, index) => {
     });
     status("Texto de revisión actualizado");
   });
-  pane.viewport.addEventListener("pointercancel", (event) => { pane.interaction = null; pane.viewport.classList.remove("dragging");
-    renderMarks(index); if (pane.viewport.hasPointerCapture(event.pointerId)) pane.viewport.releasePointerCapture(event.pointerId); });
+  pane.viewport.addEventListener("pointercancel", (event) => {
+    if (event.pointerType === "touch") {
+      pane.touchPoints.delete(event.pointerId);
+      if (pane.touchPoints.size < 2) pane.pinch = null;
+      pane.ignoreTouchUntilClear = pane.touchPoints.size > 0;
+    }
+    if (pane.interaction?.pointerId === event.pointerId) pane.interaction = null;
+    pane.viewport.classList.remove("dragging");
+    renderMarks(index);
+    if (pane.viewport.hasPointerCapture(event.pointerId)) pane.viewport.releasePointerCapture(event.pointerId);
+  });
 });
+window.addEventListener("resize", () => panes.forEach((_, index) => scheduleDetail(index)));
 document.addEventListener("pointerdown", (event) => {
   if (app.listOpen && !$("pdfListMenu").contains(event.target) && !$("pdfListButton").contains(event.target))
     togglePdfList(false);

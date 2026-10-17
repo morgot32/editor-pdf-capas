@@ -290,8 +290,24 @@ class Handler(BaseHTTPRequestHandler):
                 document = fitz.open(stream=item["data"], filetype="pdf")
                 try:
                     page = document[page_no]
-                    scale = min(2, 5000 / max(page.rect.width, page.rect.height))
-                    image = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False, annots=True).tobytes("png")
+                    detail_fields = ("x", "y", "width", "height", "scale")
+                    if any(field in query for field in detail_fields):
+                        if not all(field in query for field in detail_fields):
+                            raise ValueError("Faltan datos de la zona HD.")
+                        x, y, width, height, scale = (float(query[field][0]) for field in detail_fields)
+                        if not all(math.isfinite(value) for value in (x, y, width, height, scale)) or (
+                                x < 0 or y < 0 or width <= 0 or height <= 0 or scale <= 0 or
+                                x + width > page.rect.width + 0.01 or
+                                y + height > page.rect.height + 0.01 or
+                                width * scale > 4096 or height * scale > 4096 or
+                                width * height * scale * scale > 12_000_000):
+                            raise ValueError("La zona HD solicitada es demasiado grande.")
+                        clip = fitz.Rect(x, y, x + width, y + height)
+                    else:
+                        scale = min(2, 5000 / max(page.rect.width, page.rect.height))
+                        clip = None
+                    image = page.get_pixmap(matrix=fitz.Matrix(scale, scale), clip=clip,
+                                            alpha=False, annots=True).tobytes("png")
                 finally:
                     document.close()
                 self.send_bytes(200, image, "image/png")

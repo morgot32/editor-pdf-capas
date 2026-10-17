@@ -6,6 +6,8 @@ Abre [editor-pdf-capas en GitHub Pages](https://morgot32.github.io/editor-pdf-ca
 
 En iPad, **Guardar PDF como…** y **Guardar todos como…** ofrecen el menú Compartir de iOS cuando está disponible. Desde allí puedes elegir **Guardar en Archivos** y seleccionar la ubicación. Si el navegador no ofrece Compartir, se descarga el archivo. Los PDF se procesan en el dispositivo; el sitio no envía los documentos a un servidor. Esta versión admite hasta 20 PDF de 80 MB cada uno; no abre PDF protegidos con contraseña.
 
+Usa **Mano** para arrastrar con un dedo. Pellizca con dos dedos para ampliar o reducir y desliza ambos dedos para mover la página; los gestos funcionan también mientras está seleccionada una herramienta de marcado. Al acercar, la zona visible se vuelve a dibujar en alta resolución. Para marcar o dibujar con el dedo, selecciona primero la herramienta correspondiente.
+
 ## Publicar actualizaciones en GitHub Pages
 
 1. Ejecuta `npm install` y `npm run build` en esta carpeta.

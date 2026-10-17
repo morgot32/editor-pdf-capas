@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+import struct
 import tempfile
 import threading
 import urllib.request
@@ -53,6 +54,10 @@ def main():
         for info in opened:
             image = urllib.request.urlopen(base + "/api/page?id=" + info["id"] + "&page=0", timeout=10).read()
             assert image.startswith(b"\x89PNG\r\n\x1a\n")
+            detail = urllib.request.urlopen(
+                base + "/api/page?id=" + info["id"] +
+                "&page=0&x=10&y=10&width=50&height=40&scale=6", timeout=10).read()
+            assert struct.unpack(">II", detail[16:24]) == (300, 240)
 
         layer = {"id": "a", "name": "Revisión", "color": "#ffe45c", "opacity": 0.5, "visible": True}
         ink_layer = {"id": "ink", "name": "Dibujo", "color": "#d44332", "opacity": 1,
