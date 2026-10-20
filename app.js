@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const SVG = "http://www.w3.org/2000/svg";
 const ui = { status: $("status"), layers: $("layers"), tabs: $("tabs"), pdfInput: $("pdfInput"), projectInput: $("projectInput") };
 const panes = ["A", "B"].map((suffix) => ({
-  suffix, root: $("pane" + suffix), viewport: $("viewport" + suffix), stage: $("pageStage" + suffix),
+  suffix, root: $("pane" + suffix), viewport: $("viewport" + suffix), stage: $("pageStage" + suffix), frame: null,
   image: $("pageImage" + suffix), overlay: $("overlay" + suffix), empty: $("empty" + suffix),
   name: $("paneName" + suffix), pageInfo: $("pageInfo" + suffix), zoomLabel: $("zoomLabel" + suffix),
   docId: null, loadedKey: null, imageUrl: null, renderToken: 0, interaction: null,
@@ -12,6 +12,10 @@ const panes = ["A", "B"].map((suffix) => ({
   touchPoints: new Map(), pinch: null, ignoreTouchUntilClear: false
 }));
 panes.forEach((pane) => {
+  pane.frame = document.createElement("div");
+  pane.frame.className = "page-frame";
+  pane.stage.before(pane.frame);
+  pane.frame.append(pane.stage);
   pane.detailImage = document.createElement("img");
   pane.detailImage.className = "detail-image";
   pane.detailImage.alt = "";
@@ -20,7 +24,7 @@ panes.forEach((pane) => {
   pane.image.after(pane.detailImage);
 });
 const app = { docs: new Map(), order: [], activePane: 0, split: false, tool: "hand", temporaryHand: false,
-  pdfSort: "name", listOpen: false };
+  pdfSort: "name", listOpen: false, focusView: false };
 const staticMode = Boolean(window.EDITOR_PDF_STATIC);
 let backendCheck = null;
 let browserBackendPromise = null;
@@ -55,7 +59,7 @@ function newInkLayer(doc, color = doc.inkColor) {
 }
 function newDoc(info, hash) {
   const layer = defaultLayer(1);
-  return { id: info.id, name: info.name, hash: hash || info.sha256 || "", pages: info.pages, page: 0, zoom: 1,
+  return { id: info.id, name: info.name, hash: hash || info.sha256 || "", pages: info.pages, page: 0, zoom: 1, rotation: 0,
     openedAt: info.openedAt || Date.now(), modifiedAt: info.modifiedAt || 0, inkWidth: 3, inkColor: "#d44332",
     layers: [layer], marks: [], activeLayerId: layer.id, selectedMarkId: null, undo: [], redo: [] };
 }
@@ -64,7 +68,7 @@ function projectState(doc) { return { layers: doc.layers, marks: doc.marks, acti
 function snapshot(doc) { return JSON.stringify(projectState(doc)); }
 function persist(doc) {
   try { (staticMode ? localStorage : sessionStorage).setItem("editor-pdf-" + doc.id, JSON.stringify({ ...projectState(doc), hash: doc.hash,
-    page: doc.page, zoom: doc.zoom, inkWidth: doc.inkWidth, inkColor: doc.inkColor })); }
+    page: doc.page, zoom: doc.zoom, rotation: doc.rotation, inkWidth: doc.inkWidth, inkColor: doc.inkColor })); }
   catch { /* El editor sigue funcionando si el almacenamiento del navegador se llena. */ }
 }
 function restore(doc, value) {
@@ -242,6 +246,7 @@ async function restoreSession() {
           doc.activeLayerId = stored.activeLayerId || stored.layers[0].id;
           doc.hash = stored.hash || doc.hash; doc.page = clamp(stored.page || 0, 0, doc.pages.length - 1);
           doc.zoom = clamp(stored.zoom || 1, 0.25, 5);
+          doc.rotation = [0, 90, 180, 270].includes(stored.rotation) ? stored.rotation : 0;
           doc.inkWidth = clamp(stored.inkWidth || 3, 1, 12);
           doc.inkColor = validInkColor(stored.inkColor,
             doc.layers.find((layer) => layer.id === doc.activeLayerId && layer.role === "ink")?.color || "#d44332");
@@ -262,7 +267,7 @@ function renderPane(index) {
   if (pane.root.hidden) return;
   pane.name.textContent = doc?.name || (index === 0 ? "Ningún documento abierto" : "Selecciona otro PDF");
   pane.name.title = doc?.name || "";
-  pane.empty.hidden = !!doc; pane.stage.hidden = !doc;
+  pane.empty.hidden = !!doc; pane.frame.hidden = !doc; pane.stage.hidden = !doc;
   pane.pageInfo.disabled = !doc;
   pane.pageInfo.value = doc ? String(doc.page + 1) : "";
   pane.pageInfo.max = String(doc?.pages.length || 1);
@@ -270,7 +275,8 @@ function renderPane(index) {
   pane.zoomLabel.textContent = doc ? `${Math.round(doc.zoom * 100)}%` : "100%";
   $("prev" + pane.suffix).disabled = !doc || doc.page <= 0;
   $("next" + pane.suffix).disabled = !doc || doc.page >= doc.pages.length - 1;
-  for (const prefix of ["zoomOut", "zoomIn", "fit"]) $(prefix + pane.suffix).disabled = !doc;
+  for (const prefix of ["zoomOut", "zoomIn", "fit", "rotate"]) $(prefix + pane.suffix).disabled = !doc;
+  $("rotate" + pane.suffix).title = `Girar 90° en pantalla (actual: ${doc?.rotation || 0}°)`;
   pane.viewport.classList.remove("hand", "highlight", "ink", "callout", "select", "erase");
   pane.viewport.classList.add(app.temporaryHand ? "hand" : app.tool);
   if (!doc) { clearPaneImage(pane); pane.overlay.replaceChildren(); return; }
@@ -327,11 +333,16 @@ async function renderDetail(index) {
   const baseScale = Math.min(2, (staticMode ? 4096 : 5000) / Math.max(size.width, size.height));
   const requestedScale = doc.zoom * Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
   if (requestedScale <= baseScale * 1.1) { clearPaneDetail(pane); return; }
-  const stage = pane.stage.getBoundingClientRect(), viewport = pane.viewport.getBoundingClientRect();
-  const x0 = clamp((viewport.left - stage.left) / doc.zoom, 0, size.width);
-  const y0 = clamp((viewport.top - stage.top) / doc.zoom, 0, size.height);
-  const x1 = clamp((viewport.right - stage.left) / doc.zoom, 0, size.width);
-  const y1 = clamp((viewport.bottom - stage.top) / doc.zoom, 0, size.height);
+  const frame = pane.frame.getBoundingClientRect(), viewport = pane.viewport.getBoundingClientRect();
+  const left = Math.max(frame.left, viewport.left), top = Math.max(frame.top, viewport.top);
+  const rightEdge = Math.min(frame.right, viewport.right), bottomEdge = Math.min(frame.bottom, viewport.bottom);
+  if (rightEdge <= left || bottomEdge <= top) return;
+  const corners = [[left, top], [rightEdge, top], [left, bottomEdge], [rightEdge, bottomEdge]]
+    .map(([cx, cy]) => pageCoordinates(index, cx, cy));
+  const x0 = clamp(Math.min(...corners.map((point) => point.x)), 0, size.width);
+  const y0 = clamp(Math.min(...corners.map((point) => point.y)), 0, size.height);
+  const x1 = clamp(Math.max(...corners.map((point) => point.x)), 0, size.width);
+  const y1 = clamp(Math.max(...corners.map((point) => point.y)), 0, size.height);
   if (x1 <= x0 || y1 <= y0) return;
   const previous = pane.detailRegion;
   if (previous && previous.docId === doc.id && previous.page === doc.page &&
@@ -378,21 +389,27 @@ async function renderDetail(index) {
 function updateStageSize(index) {
   const pane = panes[index], doc = docFor(index); if (!doc) return;
   const size = doc.pages[doc.page];
-  pane.stage.style.width = `${size.width * doc.zoom}px`;
-  pane.stage.style.height = `${size.height * doc.zoom}px`;
+  const width = size.width * doc.zoom, height = size.height * doc.zoom;
+  pane.stage.style.width = `${width}px`;
+  pane.stage.style.height = `${height}px`;
+  pane.frame.style.width = `${doc.rotation % 180 ? height : width}px`;
+  pane.frame.style.height = `${doc.rotation % 180 ? width : height}px`;
+  pane.stage.style.transform = doc.rotation === 90 ? `translate(${height}px, 0) rotate(90deg)`
+    : doc.rotation === 180 ? `translate(${width}px, ${height}px) rotate(180deg)`
+      : doc.rotation === 270 ? `translate(0, ${width}px) rotate(270deg)` : "none";
   pane.overlay.setAttribute("viewBox", `0 0 ${size.width} ${size.height}`);
   pane.zoomLabel.textContent = `${Math.round(doc.zoom * 100)}%`;
 }
 function setZoom(index, value, clientX, clientY, save = true) {
   const pane = panes[index], doc = docFor(index); if (!doc) return;
   const next = clamp(value, 0.25, 5); if (Math.abs(next - doc.zoom) < 0.001) return;
-  const before = pane.stage.getBoundingClientRect();
+  const before = pane.frame.getBoundingClientRect();
   const viewport = pane.viewport.getBoundingClientRect();
   const x = clientX ?? viewport.left + pane.viewport.clientWidth / 2;
   const y = clientY ?? viewport.top + pane.viewport.clientHeight / 2;
   const docX = (x - before.left) / doc.zoom, docY = (y - before.top) / doc.zoom;
   doc.zoom = next; clearPaneDetail(pane); updateStageSize(index);
-  const after = pane.stage.getBoundingClientRect();
+  const after = pane.frame.getBoundingClientRect();
   pane.viewport.scrollLeft += after.left + docX * next - x;
   pane.viewport.scrollTop += after.top + docY * next - y;
   if (save) persist(doc);
@@ -401,8 +418,10 @@ function setZoom(index, value, clientX, clientY, save = true) {
 function fitPane(index) {
   const pane = panes[index], doc = docFor(index); if (!doc || pane.root.hidden) return;
   const size = doc.pages[doc.page];
-  doc.zoom = clamp(Math.min(Math.max(100, pane.viewport.clientWidth - 44) / size.width,
-                            Math.max(100, pane.viewport.clientHeight - 44) / size.height), 0.25, 5);
+  const width = doc.rotation % 180 ? size.height : size.width;
+  const height = doc.rotation % 180 ? size.width : size.height;
+  doc.zoom = clamp(Math.min(Math.max(100, pane.viewport.clientWidth - 44) / width,
+                            Math.max(100, pane.viewport.clientHeight - 44) / height), 0.25, 5);
   clearPaneDetail(pane); updateStageSize(index);
   pane.viewport.scrollTop = 0; pane.viewport.scrollLeft = 0; persist(doc); scheduleDetail(index);
 }
@@ -541,6 +560,11 @@ function renderButtons() {
   $("splitToggle").disabled = !app.order.length;
   $("splitToggle").classList.toggle("active", app.split);
   $("closeCurrent").disabled = !doc;
+  $("focusControls").hidden = !app.focusView;
+  $("focusPage").textContent = doc ? `${doc.page + 1} / ${doc.pages.length}` : "0 / 0";
+  $("focusPrev").disabled = !doc || doc.page === 0;
+  $("focusNext").disabled = !doc || doc.page === doc.pages.length - 1;
+  $("focusRotate").disabled = !doc;
   $("inkOptions").hidden = app.tool !== "ink";
   $("inkColor").disabled = !doc; $("inkWidth").disabled = !doc;
   $("inkColor").value = doc?.inkColor || "#d44332";
@@ -559,15 +583,37 @@ function setTool(tool) {
     erase: "Haz clic en una marca para borrarla del PDF activo · Ctrl+Z para deshacer" };
   status(labels[tool]);
 }
+function setFocusView(enabled) {
+  app.focusView = enabled;
+  document.querySelector(".app").classList.toggle("focus-view", enabled);
+  renderAll();
+  panes.forEach((_, index) => scheduleDetail(index));
+}
+function rotatePane(index) {
+  const doc = docFor(index); if (!doc) return;
+  doc.rotation = (doc.rotation + 90) % 360;
+  panes.forEach((pane, paneIndex) => { if (docFor(paneIndex)?.id === doc.id) clearPaneDetail(pane); });
+  persist(doc); renderAll();
+  requestAnimationFrame(() => panes.forEach((pane, paneIndex) => {
+    if (!pane.root.hidden && docFor(paneIndex)?.id === doc.id) fitPane(paneIndex);
+  }));
+  status(`${doc.name} girado ${doc.rotation}° en pantalla`);
+}
 function effectiveTool() { return app.temporaryHand ? "hand" : app.tool; }
-function pointOnPage(event, index) {
-  const pane = panes[index], doc = docFor(index), rect = pane.stage.getBoundingClientRect();
+function pageCoordinates(index, clientX, clientY) {
+  const pane = panes[index], doc = docFor(index), rect = pane.frame.getBoundingClientRect();
   const size = doc.pages[doc.page];
-  return { x: clamp((event.clientX - rect.left) / doc.zoom, 0, size.width),
-    y: clamp((event.clientY - rect.top) / doc.zoom, 0, size.height) };
+  const x = (clientX - rect.left) / doc.zoom, y = (clientY - rect.top) / doc.zoom;
+  const point = doc.rotation === 90 ? { x: y, y: size.height - x }
+    : doc.rotation === 180 ? { x: size.width - x, y: size.height - y }
+      : doc.rotation === 270 ? { x: size.width - y, y: x } : { x, y };
+  return { x: clamp(point.x, 0, size.width), y: clamp(point.y, 0, size.height) };
+}
+function pointOnPage(event, index) {
+  return pageCoordinates(index, event.clientX, event.clientY);
 }
 function insidePage(event, index) {
-  const rect = panes[index].stage.getBoundingClientRect();
+  const rect = panes[index].frame.getBoundingClientRect();
   return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
 }
 function normalizedRect(a, b) {
@@ -615,7 +661,15 @@ function touchPair(pane) {
 function pointerDown(event, index) {
   activatePane(index);
   const pane = panes[index], doc = docFor(index);
-  if (!doc || (event.pointerType !== "touch" && event.button !== 0)) return;
+  if (!doc || (event.pointerType !== "touch" && event.button !== 0 && event.button !== 1)) return;
+  if (event.button === 1 && event.pointerType !== "touch") {
+    pane.interaction = { kind: "pan", x: event.clientX, y: event.clientY,
+      left: pane.viewport.scrollLeft, top: pane.viewport.scrollTop, pointerId: event.pointerId };
+    pane.viewport.classList.add("dragging");
+    pane.viewport.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    return;
+  }
   if (event.pointerType === "touch") {
     pane.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
     pane.viewport.setPointerCapture(event.pointerId);
@@ -881,7 +935,8 @@ async function exportAll() {
 function saveProject() {
   const doc = currentDoc(); if (!doc) return;
   const payload = { version: 2, sourceName: doc.name, sha256: doc.hash, pages: doc.pages,
-    layers: doc.layers, marks: doc.marks, inkColor: doc.inkColor, inkWidth: doc.inkWidth };
+    layers: doc.layers, marks: doc.marks, inkColor: doc.inkColor, inkWidth: doc.inkWidth,
+    rotation: doc.rotation };
   const name = doc.name.replace(/\.pdf$/i, "") + "_capas.json";
   downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), name);
   status(`Proyecto guardado: ${name}`);
@@ -920,7 +975,11 @@ async function openProject(file) {
     doc.inkColor = validInkColor(project.inkColor,
       doc.layers.find((layer) => layer.role === "ink")?.color || "#d44332");
     if (Number.isFinite(project.inkWidth)) doc.inkWidth = clamp(project.inkWidth, 1, 12);
-    persist(doc); renderButtons();
+    if ([0, 90, 180, 270].includes(project.rotation)) {
+      doc.rotation = project.rotation;
+      panes.forEach((pane, index) => { if (docFor(index)?.id === doc.id) clearPaneDetail(pane); });
+    }
+    persist(doc); renderAll();
     status(`${doc.marks.length} marcas cargadas en ${doc.name}`);
   } catch (error) { status(`Error: ${error.message}`); }
 }
@@ -939,6 +998,11 @@ $("pdfSort").onchange = (event) => {
   renderPdfList();
 };
 $("closeCurrent").onclick = () => { const doc = currentDoc(); if (doc) closeDoc(doc.id); };
+$("focusToggle").onclick = () => setFocusView(true);
+$("focusExit").onclick = () => setFocusView(false);
+$("focusPrev").onclick = () => changePage(app.activePane, -1);
+$("focusNext").onclick = () => changePage(app.activePane, 1);
+$("focusRotate").onclick = () => rotatePane(app.activePane);
 $("toolHand").onclick = () => setTool("hand");
 $("toolHighlight").onclick = () => setTool("highlight");
 $("toolInk").onclick = () => setTool("ink");
@@ -985,6 +1049,9 @@ panes.forEach((pane, index) => {
   $("zoomOut" + pane.suffix).onclick = () => { const doc = docFor(index); if (doc) setZoom(index, doc.zoom / 1.2); };
   $("zoomIn" + pane.suffix).onclick = () => { const doc = docFor(index); if (doc) setZoom(index, doc.zoom * 1.2); };
   $("fit" + pane.suffix).onclick = () => fitPane(index);
+  $("rotate" + pane.suffix).onclick = () => rotatePane(index);
+  pane.viewport.addEventListener("mousedown", (event) => { if (event.button === 1) event.preventDefault(); });
+  pane.viewport.addEventListener("auxclick", (event) => { if (event.button === 1) event.preventDefault(); });
   pane.viewport.addEventListener("wheel", (event) => { const doc = docFor(index); if (!doc) return;
     event.preventDefault(); activatePane(index); setZoom(index, doc.zoom * Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);
   }, { passive: false });
@@ -1033,6 +1100,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape" && app.listOpen) { togglePdfList(false); return; }
+  if (event.key === "Escape" && app.focusView) { setFocusView(false); return; }
   if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
   if (event.ctrlKey && !event.altKey && key === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); return; }
   if (event.ctrlKey && !event.altKey && key === "y") { event.preventDefault(); redo(); return; }

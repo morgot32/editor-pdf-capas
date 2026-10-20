@@ -29,6 +29,9 @@ Aplicación local para abrir varios PDF, resaltar zonas, dibujar trazos suaves y
 - **Abrir PDFs** permite seleccionar varios archivos a la vez. Cada uno aparece en una pestaña. **Vista dividida** muestra dos PDF lado a lado; haz clic en un panel para activar sus capas y herramientas.
 - El botón pequeño **☰** muestra todos los PDF abiertos. Puedes ordenarlos por nombre, fecha de modificación del archivo o fecha de apertura. La **×** contigua cierra el PDF activo.
 - **Mano** arrastra la página. La rueda del ratón acerca o aleja centrando el zoom en el puntero. **Ajustar** encaja la página del panel correspondiente.
+- Mantén pulsado el **botón central del ratón** para mover el PDF con la mano temporalmente, incluso si está seleccionada otra herramienta.
+- **Vista limpia** oculta las barras y paneles del editor dentro de la pestaña. El control flotante permite cambiar de hoja, girar y salir; **Esc** también sale. No activa la pantalla completa del navegador.
+- **⟳** gira el PDF mostrado en pasos de 90°. Las marcas giran con la hoja y mantienen su posición. El giro es sólo de visualización y no altera el PDF original ni el exportado.
 - En un PDF de varias hojas, usa **‹ / ›** para cambiar de hoja o escribe el número en **Hoja _n_ de _total_**. Las marcas quedan asociadas a su hoja al guardar o exportar.
 - **Marcar** dibuja un rectángulo resaltado en la capa seleccionada. Cambia su color, opacidad, nombre o visibilidad en el panel derecho.
 - **Dibujar** permite hacer trazos libres suavizados, con extremos redondos. Elige el **color del lápiz** y el grosor junto al botón antes de dibujar. Cada color se guarda en una capa **Dibujo** propia del PDF, por lo que cambiar el color no modifica las notas anteriores. Puedes ajustar la opacidad o renombrar cada capa; **+** crea otra capa de dibujo cuando esta herramienta está activa. El color elegido se recuerda por PDF y en el proyecto guardado.
