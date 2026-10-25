@@ -2,6 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const SVG = "http://www.w3.org/2000/svg";
+const MAX_ZOOM = 10;
 const ui = { status: $("status"), layers: $("layers"), tabs: $("tabs"), pdfInput: $("pdfInput"), projectInput: $("projectInput") };
 const panes = ["A", "B"].map((suffix) => ({
   suffix, root: $("pane" + suffix), viewport: $("viewport" + suffix), stage: $("pageStage" + suffix), frame: null,
@@ -245,7 +246,7 @@ async function restoreSession() {
           doc.layers = stored.layers; doc.marks = stored.marks;
           doc.activeLayerId = stored.activeLayerId || stored.layers[0].id;
           doc.hash = stored.hash || doc.hash; doc.page = clamp(stored.page || 0, 0, doc.pages.length - 1);
-          doc.zoom = clamp(stored.zoom || 1, 0.25, 5);
+          doc.zoom = clamp(stored.zoom || 1, 0.25, MAX_ZOOM);
           doc.rotation = [0, 90, 180, 270].includes(stored.rotation) ? stored.rotation : 0;
           doc.inkWidth = clamp(stored.inkWidth || 3, 1, 12);
           doc.inkColor = validInkColor(stored.inkColor,
@@ -275,7 +276,7 @@ function renderPane(index) {
   pane.zoomLabel.textContent = doc ? `${Math.round(doc.zoom * 100)}%` : "100%";
   $("prev" + pane.suffix).disabled = !doc || doc.page <= 0;
   $("next" + pane.suffix).disabled = !doc || doc.page >= doc.pages.length - 1;
-  for (const prefix of ["zoomOut", "zoomIn", "fit", "rotate"]) $(prefix + pane.suffix).disabled = !doc;
+  for (const prefix of ["zoomOut", "zoomIn", "zoomMax", "fit", "rotate"]) $(prefix + pane.suffix).disabled = !doc;
   $("rotate" + pane.suffix).title = `Girar 90° en pantalla (actual: ${doc?.rotation || 0}°)`;
   pane.viewport.classList.remove("hand", "highlight", "ink", "callout", "select", "erase");
   pane.viewport.classList.add(app.temporaryHand ? "hand" : app.tool);
@@ -402,7 +403,7 @@ function updateStageSize(index) {
 }
 function setZoom(index, value, clientX, clientY, save = true) {
   const pane = panes[index], doc = docFor(index); if (!doc) return;
-  const next = clamp(value, 0.25, 5); if (Math.abs(next - doc.zoom) < 0.001) return;
+  const next = clamp(value, 0.25, MAX_ZOOM); if (Math.abs(next - doc.zoom) < 0.001) return;
   const before = pane.frame.getBoundingClientRect();
   const viewport = pane.viewport.getBoundingClientRect();
   const x = clientX ?? viewport.left + pane.viewport.clientWidth / 2;
@@ -421,7 +422,7 @@ function fitPane(index) {
   const width = doc.rotation % 180 ? size.height : size.width;
   const height = doc.rotation % 180 ? size.width : size.height;
   doc.zoom = clamp(Math.min(Math.max(100, pane.viewport.clientWidth - 44) / width,
-                            Math.max(100, pane.viewport.clientHeight - 44) / height), 0.25, 5);
+                            Math.max(100, pane.viewport.clientHeight - 44) / height), 0.25, MAX_ZOOM);
   clearPaneDetail(pane); updateStageSize(index);
   pane.viewport.scrollTop = 0; pane.viewport.scrollLeft = 0; persist(doc); scheduleDetail(index);
 }
@@ -1048,6 +1049,7 @@ panes.forEach((pane, index) => {
   pane.pageInfo.onkeydown = (event) => { if (event.key === "Enter") pane.pageInfo.blur(); };
   $("zoomOut" + pane.suffix).onclick = () => { const doc = docFor(index); if (doc) setZoom(index, doc.zoom / 1.2); };
   $("zoomIn" + pane.suffix).onclick = () => { const doc = docFor(index); if (doc) setZoom(index, doc.zoom * 1.2); };
+  $("zoomMax" + pane.suffix).onclick = () => setZoom(index, MAX_ZOOM);
   $("fit" + pane.suffix).onclick = () => fitPane(index);
   $("rotate" + pane.suffix).onclick = () => rotatePane(index);
   pane.viewport.addEventListener("mousedown", (event) => { if (event.button === 1) event.preventDefault(); });

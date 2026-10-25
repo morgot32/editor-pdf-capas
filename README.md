@@ -28,7 +28,7 @@ Aplicación local para abrir varios PDF, resaltar zonas, dibujar trazos suaves y
 
 - **Abrir PDFs** permite seleccionar varios archivos a la vez. Cada uno aparece en una pestaña. **Vista dividida** muestra dos PDF lado a lado; haz clic en un panel para activar sus capas y herramientas.
 - El botón pequeño **☰** muestra todos los PDF abiertos. Puedes ordenarlos por nombre, fecha de modificación del archivo o fecha de apertura. La **×** contigua cierra el PDF activo.
-- **Mano** arrastra la página. La rueda del ratón acerca o aleja centrando el zoom en el puntero. **Ajustar** encaja la página del panel correspondiente.
+- **Mano** arrastra la página. La rueda del ratón acerca o aleja centrando el zoom en el puntero, hasta **1000%**. El botón **1000%** lleva directamente al aumento máximo y vuelve a renderizar la zona visible en HD. **Ajustar** encaja la página del panel correspondiente.
 - Mantén pulsado el **botón central del ratón** para mover el PDF con la mano temporalmente, incluso si está seleccionada otra herramienta.
 - **Vista limpia** oculta las barras y paneles del editor dentro de la pestaña. El control flotante permite cambiar de hoja, girar y salir; **Esc** también sale. No activa la pantalla completa del navegador.
 - **⟳** gira el PDF mostrado en pasos de 90°. Las marcas giran con la hoja y mantienen su posición. El giro es sólo de visualización y no altera el PDF original ni el exportado.
