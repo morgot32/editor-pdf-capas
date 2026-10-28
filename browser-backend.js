@@ -63,7 +63,17 @@ export async function listDocuments() {
 
 export async function openDocument(file, buffer, hash, onProgress = () => {}) {
   await loadSaved();
-  if (!file.name.toLowerCase().endsWith(".pdf")) throw new Error("Selecciona un archivo PDF.");
+  if (/\.(jpe?g|png)$/i.test(file.name)) {
+    if(file.size > MAX_FILE_BYTES) throw new Error('La imagen supera 80 MB.');
+    const converted=await PDFDocument.create();
+    const bytes=new Uint8Array(buffer || await file.arrayBuffer());
+    const image=/\.png$/i.test(file.name)?await converted.embedPng(bytes):await converted.embedJpg(bytes);
+    const page=converted.addPage([image.width*.75,image.height*.75]);
+    page.drawImage(image,{x:0,y:0,width:page.getWidth(),height:page.getHeight()});
+    buffer=await converted.save();
+    file=new File([buffer],file.name.replace(/\.[^.]+$/,'.pdf'),{type:'application/pdf',lastModified:file.lastModified});
+  }
+  if (!file.name.toLowerCase().endsWith('.pdf')) throw new Error('Selecciona PDF, JPG o PNG.');
   if (file.size > MAX_FILE_BYTES) throw new Error("En iPad el límite por PDF es de 80 MB.");
   if (records.size >= MAX_DOCUMENTS) throw new Error("Cierra un PDF antes de abrir más de 20.");
   const record = { blob: file, pdf: null };

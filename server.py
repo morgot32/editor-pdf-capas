@@ -328,6 +328,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/open":
                 data = self.read_body(MAX_PDF_BYTES)
+                image_name = unquote(self.headers.get("X-File-Name", ""))
+                image_type = Path(image_name).suffix.lower().lstrip(".")
+                if image_type in ("jpg", "jpeg", "png"):
+                    with fitz.open(stream=data, filetype=image_type) as image_doc:
+                        data = image_doc.convert_to_pdf()
                 document = fitz.open(stream=data, filetype="pdf")
                 try:
                     if document.needs_pass:
